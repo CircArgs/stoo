@@ -1,4 +1,5 @@
 import requests
+from bs4 import BeautifulSoup
 import re
 
 # Configuration
@@ -15,9 +16,12 @@ if response.status_code != 200:
     print("❌ Failed to fetch package versions")
     exit(1)
 
-# Extract version numbers using regex
-version_pattern = re.compile(rf"{PACKAGE_NAME}-(\d+\.\d+\.\d+)")  # Matches "package-0.0.4"
-versions = version_pattern.findall(response.text)
+# Parse the HTML response with BeautifulSoup
+soup = BeautifulSoup(response.text, "html.parser")
+
+# Extract all links and find version numbers
+version_pattern = re.compile(rf"{PACKAGE_NAME}-(\d+\.\d+\.\d+)")
+versions = [match.group(1) for link in soup.find_all("a") if (match := version_pattern.search(link.text))]
 
 if not versions:
     print("❌ No versions found")
