@@ -5,10 +5,10 @@ ARTIFACTORY_URL="https://artifactory.cloud.capitalone.com:443/artifactory"
 REPO_KEY="pypi-internalfacing"
 
 # Get installed version
-INSTALLED_VERSION=$(pip show "$PACKAGE_NAME" | grep -i "Version:" | awk '{print $2}')
+INSTALLED_VERSION=$(pip show "$PACKAGE_NAME" | awk '/Version:/ {print $2}')
 
 # Get the latest available version from Artifactory
-LATEST_VERSION=$(curl -s "$ARTIFACTORY_URL/api/pypi/$REPO_KEY/simple/$PACKAGE_NAME/" | grep -oP '(?<=<a href=")[^"]+' | sort -V | tail -n 1)
+LATEST_VERSION=$(curl -s "$ARTIFACTORY_URL/api/pypi/$REPO_KEY/simple/$PACKAGE_NAME/" | sed -n 's/.*href="\(.*\)".*/\1/p' | awk -F'/' '{print $NF}' | sort -V | tail -n 1)
 
 if [[ -z "$INSTALLED_VERSION" ]]; then
     echo "⚠️  $PACKAGE_NAME is not installed."
@@ -16,7 +16,7 @@ if [[ -z "$INSTALLED_VERSION" ]]; then
 fi
 
 if [[ -z "$LATEST_VERSION" ]]; then
-    echo "⚠️  Unable to fetch latest version."
+    echo "⚠️  Unable to fetch the latest version."
     exit 1
 fi
 
