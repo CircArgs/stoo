@@ -1,33 +1,22 @@
-import requests
-from bs4 import BeautifulSoup
-import re
+def on_moved(self, event):
+    """Handles file or folder renaming and movement"""
+    if event.is_directory:
+        print(f"Folder renamed or moved: {event.src_path} -> {event.dest_path}")
+        # Walk through the renamed/moved folder and upload all files first
+        for root, _, files in os.walk(event.dest_path):
+            for file in files:
+                full_path = os.path.join(root, file)
+                self.upload_file(full_path)
+        
+        # Now walk through the old folder path and delete files remotely
+        for root, _, files in os.walk(event.src_path):
+            for file in files:
+                full_path = os.path.join(root, file)
+                self.delete_file(full_path)
 
-# Configuration
-ARTIFACTORY_URL = "https://artifactory.cloud.capitalone.com:443/artifactory"
-REPO_KEY = "pypi-internalfacing"
-PACKAGE_NAME = "c1-genai-workflow-dev-client"
-
-# Construct the Artifactory API URL
-api_url = f"{ARTIFACTORY_URL}/api/pypi/{REPO_KEY}/simple/{PACKAGE_NAME}/"
-
-# Fetch package versions
-response = requests.get(api_url)
-if response.status_code != 200:
-    print("❌ Failed to fetch package versions")
-    exit(1)
-
-# Parse the HTML response with BeautifulSoup
-soup = BeautifulSoup(response.text, "html.parser")
-
-# Extract all links and find version numbers
-version_pattern = re.compile(rf"{PACKAGE_NAME}-(\d+\.\d+\.\d+)")
-versions = [match.group(1) for link in soup.find_all("a") if (match := version_pattern.search(link.text))]
-
-if not versions:
-    print("❌ No versions found")
-    exit(1)
-
-# Sort and get the latest version
-latest_version = sorted(versions, key=lambda v: list(map(int, v.split('.'))))[-1]
-
-print(f"✅ Latest version: {latest_version}")
+    else:
+        print(f"File renamed or moved: {event.src_path} -> {event.dest_path}")
+        # Upload the new file first
+        self.upload_file(event.dest_path)
+        # Then delete the old file
+        self.delete_file(event.src_path)
