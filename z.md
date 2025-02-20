@@ -1,62 +1,65 @@
-Thanks for sharing the updated directory structure and `kustomization.yaml` file. Below is the **fixed `entrypoint.sh`** and a **new Phoenix overlay** that works with the current directory layout.
+You're right to point that out! Instead of **redefining part of the deployment**, we should **use a proper Kustomize JSON patch** or a `strategicMerge` operation that **only appends** the `phoenix` container.
 
 ---
 
-## **1. Phoenix Overlay (To Be Created)**
-We will define:
-- A **Kustomization file** (`kustomization.yaml`) to apply the Phoenix container.
-- A **Patch file** (`phoenix-additions.yaml`) to add the container.
+## **1. The Correct Kustomize Patch for Adding a Container**
+To **only append the `phoenix` container** without touching other parts of the deployment, we should **use a JSON patch** instead of a full YAML patch.
 
-### **Create `overlays/phoenix/kustomization.yaml`**
+### **`overlays/phoenix/phoenix-additions.yaml`**
+```yaml
+# overlays/phoenix/phoenix-additions.yaml
+- op: add
+  path: /spec/template/spec/containers/-
+  value:
+    name: phoenix
+    image: arize/phoenix:latest
+    env:
+      - name: ENABLE_PHOENIX
+        value: "true"
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        if [ "$ENABLE_PHOENIX" = "true" ]; then
+          echo "Starting Phoenix..."
+          exec phoenix
+        else
+          echo "Skipping Phoenix container..."
+          sleep infinity
+        fi
+```
+### **Why This Works**
+✅ **Uses `op: add` to append to the `/containers` array**  
+✅ **Does not redefine the deployment**  
+✅ **Minimal change, no unnecessary modifications**  
+
+---
+
+## **2. The Phoenix Overlay Kustomization File**
+This tells Kustomize to **always include the base resources** and **apply the Phoenix patch**.
+
+### **`overlays/phoenix/kustomization.yaml`**
 ```yaml
 # overlays/phoenix/kustomization.yaml
 resources:
-  - ../../base  # Always include the base resources
+  - ../../base  # Always include the base deployment
 
-patchesStrategicMerge:
-  - phoenix-additions.yaml  # Apply the Phoenix container patch
+patchesJson6902:
+  - target:
+      version: v1
+      kind: Deployment
+      name: workflow-dev-env
+    path: phoenix-additions.yaml
 ```
+
+### **Why This Works**
+✅ Uses **`patchesJson6902`**, which applies JSON-style patches correctly.  
+✅ Ensures **only the container is added**, without affecting anything else.  
 
 ---
 
-### **Create `overlays/phoenix/phoenix-additions.yaml`**
-This adds the `arize/phoenix` container **only** when applied.
+## **3. Fix `entrypoint.sh` to Apply the Right Overlay**
+Modify `entrypoint.sh` to apply either the **base deployment** or the **Phoenix overlay**.
 
-```yaml
-# overlays/phoenix/phoenix-additions.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: workflow-dev-env
-spec:
-  template:
-    spec:
-      containers:
-        - name: phoenix
-          image: arize/phoenix:latest
-          env:
-            - name: ENABLE_PHOENIX
-              value: "true"
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              if [ "$ENABLE_PHOENIX" = "true" ]; then
-                echo "Starting Phoenix..."
-                exec phoenix
-              else
-                echo "Skipping Phoenix container..."
-                sleep infinity
-              fi
-```
-
----
-
-## **2. Fix `entrypoint.sh`**
-Now, we need to modify `entrypoint.sh` so that it:
-- **Always applies the base Kustomization**.
-- **Only applies the Phoenix overlay if `ENABLE_PHOENIX=true`**.
-
-### **Updated `entrypoint.sh`**
 ```bash
 #!/usr/bin/env bash
 set -xe  # Fail fast
@@ -88,25 +91,8 @@ kubectl apply -n "$NAMESPACE" -f /tmp/genai-workflows-application.yaml
 
 ---
 
-## **How This Works**
+## **Final Behavior**
 | `ENABLE_PHOENIX` | Applied Kustomization Overlay | Phoenix Container |
 |------------------|-----------------------------|-------------------|
 | `false` (default) | `patches/base/` | ❌ Not included |
-| `true` | `patches/overlays/phoenix/` | ✅ Included |
-
----
-
-## **Key Benefits**
-✅ **Modular**: The Phoenix container is optional and separate.  
-✅ **Maintains existing patches**: Always applies the `base` patches.  
-✅ **Easy to extend**: New overlays can be added in the future.  
-✅ **No unnecessary patches**: Only applies `phoenix-additions.yaml` when needed.  
-
----
-
-### **Next Steps**
-- **Create the `overlays/phoenix/` directory** and add the `kustomization.yaml` and `phoenix-additions.yaml` files.
-- **Replace `entrypoint.sh` with the updated version**.
-
-This setup is **clean, scalable, and follows Kubernetes best practices**. 🚀  
-Let me know if you need any tweaks!
+| `true` | `patches/overlays
