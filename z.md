@@ -1,96 +1,112 @@
-## Unified Tool Exception Handling  
+Thanks for sharing the updated directory structure and `kustomization.yaml` file. Below is the **fixed `entrypoint.sh`** and a **new Phoenix overlay** that works with the current directory layout.
 
-To ensure consistency and reliability in tool execution, `c1.genai.workflows.tools` enforces a **structured exception handling system**. This system provides **standardized error classes**, **automatic error logging**, and **retry mechanisms** where applicable.
+---
 
-### **1. Standardized Exception Hierarchy**  
+## **1. Phoenix Overlay (To Be Created)**
+We will define:
+- A **Kustomization file** (`kustomization.yaml`) to apply the Phoenix container.
+- A **Patch file** (`phoenix-additions.yaml`) to add the container.
 
-All exceptions raised during tool execution will inherit from a base exception class, ensuring a unified error-handling approach across different tool types.
+### **Create `overlays/phoenix/kustomization.yaml`**
+```yaml
+# overlays/phoenix/kustomization.yaml
+resources:
+  - ../../base  # Always include the base resources
 
-```python
-class ToolExecutionError(Exception):
-    """Base exception class for all tool execution errors."""
-    pass
-
-class ToolValidationError(ToolExecutionError):
-    """Raised when input validation fails."""
-    pass
-
-class ToolInvocationError(ToolExecutionError):
-    """Raised when the underlying function or API call fails."""
-    pass
-
-class ToolTimeoutError(ToolExecutionError):
-    """Raised when a tool execution exceeds the allowed time limit."""
-    pass
+patchesStrategicMerge:
+  - phoenix-additions.yaml  # Apply the Phoenix container patch
 ```
 
-### **2. Automatic Error Logging**  
+---
 
-The `Tool` class will log all exceptions, ensuring that failures are traceable and actionable.  
+### **Create `overlays/phoenix/phoenix-additions.yaml`**
+This adds the `arize/phoenix` container **only** when applied.
 
-```python
-import logging
-
-logger = logging.getLogger("c1.genai.workflows.tools")
-
-try:
-    result = some_tool.invoke(customer_id="12345")
-except ToolExecutionError as e:
-    logger.error(f"Tool execution failed: {str(e)}")
-    raise
+```yaml
+# overlays/phoenix/phoenix-additions.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-dev-env
+spec:
+  template:
+    spec:
+      containers:
+        - name: phoenix
+          image: arize/phoenix:latest
+          env:
+            - name: ENABLE_PHOENIX
+              value: "true"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              if [ "$ENABLE_PHOENIX" = "true" ]; then
+                echo "Starting Phoenix..."
+                exec phoenix
+              else
+                echo "Skipping Phoenix container..."
+                sleep infinity
+              fi
 ```
 
-### **3. Exception Handling During Execution**  
+---
 
-The `Tool` class wraps execution in a structured try-except block, ensuring that all exceptions are **caught, logged, and raised in a predictable manner**.
+## **2. Fix `entrypoint.sh`**
+Now, we need to modify `entrypoint.sh` so that it:
+- **Always applies the base Kustomization**.
+- **Only applies the Phoenix overlay if `ENABLE_PHOENIX=true`**.
 
-```python
-def invoke(self, **kwargs):
-    try:
-        validated_input = self.input_model(**kwargs)
-        return self.func(validated_input)
-    except ValidationError as e:
-        raise ToolValidationError(f"Input validation failed: {e}") from e
-    except Exception as e:
-        raise ToolInvocationError(f"Tool function failed: {e}") from e
+### **Updated `entrypoint.sh`**
+```bash
+#!/usr/bin/env bash
+set -xe  # Fail fast
+
+# Copy workflow values
+cp /app/workflow-values.yaml /tmp/workflow-values.yaml
+
+# Download & Extract Helm Package
+cd /tmp
+curl -O "https://artifactory.cloud.capitalone.com/artifactory/helm-shared/genai-kubernetes-platform/${WORKFLOWS_HUB}"
+tar -xvf genai-workflows-application.tgz --no-same-owner
+
+# Apply Patches
+python3 /app/scripts/patches/patch_values.py workflow-values.yaml
+python3 /app/scripts/patches/patch_cron.py genai-workflows-application/templates/dev-env-cron.yaml
+
+# Determine which Kustomization overlay to apply
+if [ "$ENABLE_PHOENIX" = "true" ]; then
+    echo "Applying Phoenix overlay..."
+    kubectl kustomize /app/patches/overlays/phoenix --enable-helm > /tmp/genai-workflows-application.yaml
+else
+    echo "Applying base overlay..."
+    kubectl kustomize /app/patches/base --enable-helm > /tmp/genai-workflows-application.yaml
+fi
+
+# Deploy
+kubectl apply -n "$NAMESPACE" -f /tmp/genai-workflows-application.yaml
 ```
 
-### **4. Retry Mechanism for Transient Failures**  
+---
 
-For tools interacting with external services (such as `APITool` or `MCPClient`), transient failures (e.g., network issues) should trigger **automated retries**.
+## **How This Works**
+| `ENABLE_PHOENIX` | Applied Kustomization Overlay | Phoenix Container |
+|------------------|-----------------------------|-------------------|
+| `false` (default) | `patches/base/` | ❌ Not included |
+| `true` | `patches/overlays/phoenix/` | ✅ Included |
 
-```python
-import time
+---
 
-def retry_tool_execution(tool, max_retries=3, **kwargs):
-    for attempt in range(max_retries):
-        try:
-            return tool.invoke(**kwargs)
-        except ToolInvocationError as e:
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)  # Exponential backoff
-            else:
-                raise
-```
+## **Key Benefits**
+✅ **Modular**: The Phoenix container is optional and separate.  
+✅ **Maintains existing patches**: Always applies the `base` patches.  
+✅ **Easy to extend**: New overlays can be added in the future.  
+✅ **No unnecessary patches**: Only applies `phoenix-additions.yaml` when needed.  
 
-### **5. Scoped Exception Handling for AI Workflows**  
+---
 
-When using tools in AI workflows (e.g., via LangChain), scoped exception handling ensures failures do not cascade unnecessarily.
+### **Next Steps**
+- **Create the `overlays/phoenix/` directory** and add the `kustomization.yaml` and `phoenix-additions.yaml` files.
+- **Replace `entrypoint.sh` with the updated version**.
 
-```python
-try:
-    langchain_tool = some_tool.to_langchain()
-    langchain_tool.invoke()
-except ToolExecutionError as e:
-    print(f"LangChain tool execution failed: {e}")
-```
-
-### **Key Takeaways**  
-
-- **Standardized exception classes** ensure consistency across all tools.  
-- **Automatic logging** captures execution failures for debugging and monitoring.  
-- **Input validation errors** are raised early, preventing malformed data from propagating.  
-- **Retry logic** helps mitigate transient failures in external tool calls.  
-- **Scoped exception handling** ensures failures are contained within their execution context.  
-
-This approach provides **robust error handling** while maintaining the flexibility needed for agentic workflows and external API integrations.
+This setup is **clean, scalable, and follows Kubernetes best practices**. 🚀  
+Let me know if you need any tweaks!
