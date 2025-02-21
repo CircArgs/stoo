@@ -1,98 +1,194 @@
-You're right to point that out! Instead of **redefining part of the deployment**, we should **use a proper Kustomize JSON patch** or a `strategicMerge` operation that **only appends** the `phoenix` container.
+#!/bin/bash
 
----
+# Create a temporary file
+TMP_FILE=$(mktemp)
+TMP_HTML="${TMP_FILE}.html"
+mv "$TMP_FILE" "$TMP_HTML"
 
-## **1. The Correct Kustomize Patch for Adding a Container**
-To **only append the `phoenix` container** without touching other parts of the deployment, we should **use a JSON patch** instead of a full YAML patch.
+# Define the UTC start time (modify as needed)
+START_TIME="2025-02-19T12:00:00Z"
 
-### **`overlays/phoenix/phoenix-additions.yaml`**
-```yaml
-# overlays/phoenix/phoenix-additions.yaml
-- op: add
-  path: /spec/template/spec/containers/-
-  value:
-    name: phoenix
-    image: arize/phoenix:latest
-    env:
-      - name: ENABLE_PHOENIX
-        value: "true"
-    command: ["/bin/sh", "-c"]
-    args:
-      - |
-        if [ "$ENABLE_PHOENIX" = "true" ]; then
-          echo "Starting Phoenix..."
-          exec phoenix
-        else
-          echo "Skipping Phoenix container..."
-          sleep infinity
-        fi
-```
-### **Why This Works**
-✅ **Uses `op: add` to append to the `/containers` array**  
-✅ **Does not redefine the deployment**  
-✅ **Minimal change, no unnecessary modifications**  
+# Define fake versions (replace with actual logic if needed)
+CLIENT_VERSION="1.2.3"
+WORKFLOW_CHART_VERSION="4.5.6"
 
----
+# Write HTML content with JavaScript
+cat > "$TMP_HTML" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Development Environment</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            max-width: 700px;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+        }
+        .button-container {
+            margin: 20px 0;
+        }
+        .link-button {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 10px auto;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 300px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .link-button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        .status.up { color: green; }
+        .status.down { color: red; }
+        .info {
+            font-size: 14px;
+            color: #666;
+            margin-top: 20px;
+        }
+        .uptime {
+            font-weight: bold;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        td {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Workflow Development Environment</h1>
+        
+        <div class="button-container">
+            <a href="https://example.com" target="_blank" class="link-button">
+                Example
+                <span id="status-example" class="status">Checking...</span>
+            </a>
+            <a href="https://google.com" target="_blank" class="link-button">
+                Google
+                <span id="status-google" class="status">Checking...</span>
+            </a>
+        </div>
 
-## **2. The Phoenix Overlay Kustomization File**
-This tells Kustomize to **always include the base resources** and **apply the Phoenix patch**.
+        <div class="info">
+            <p>This page provides quick access to important resources in your workflow development environment.</p>
+            <p>Click on the buttons above to open the respective tools.</p>
+        </div>
 
-### **`overlays/phoenix/kustomization.yaml`**
-```yaml
-# overlays/phoenix/kustomization.yaml
-resources:
-  - ../../base  # Always include the base deployment
+        <div class="info">
+            <p>Environment has been up for: <span id="uptime" class="uptime">Calculating...</span></p>
+        </div>
 
-patchesJson6902:
-  - target:
-      version: v1
-      kind: Deployment
-      name: workflow-dev-env
-    path: phoenix-additions.yaml
-```
+        <table>
+            <tr>
+                <th>Parameter</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td>Client Version</td>
+                <td>$CLIENT_VERSION</td>
+            </tr>
+            <tr>
+                <td>Workflow Chart Version</td>
+                <td>$WORKFLOW_CHART_VERSION</td>
+            </tr>
+        </table>
+    </div>
 
-### **Why This Works**
-✅ Uses **`patchesJson6902`**, which applies JSON-style patches correctly.  
-✅ Ensures **only the container is added**, without affecting anything else.  
+    <script>
+        // List of sites to check
+        const sites = [
+            { url: "https://example.com", id: "status-example" },
+            { url: "https://google.com", id: "status-google" }
+        ];
 
----
+        // Function to check if a site is reachable
+        function checkStatus(url, elementId) {
+            fetch(url, { mode: 'no-cors' }) // no-cors to avoid blocking issues
+                .then(() => {
+                    document.getElementById(elementId).textContent = "✅ Up";
+                    document.getElementById(elementId).classList.add("up");
+                })
+                .catch(() => {
+                    document.getElementById(elementId).textContent = "❌ Down";
+                    document.getElementById(elementId).classList.add("down");
+                });
+        }
 
-## **3. Fix `entrypoint.sh` to Apply the Right Overlay**
-Modify `entrypoint.sh` to apply either the **base deployment** or the **Phoenix overlay**.
+        // Run status checks
+        sites.forEach(site => checkStatus(site.url, site.id));
 
-```bash
-#!/usr/bin/env bash
-set -xe  # Fail fast
+        // Uptime Counter
+        const startTime = new Date("$START_TIME");
+        
+        function updateUptime() {
+            const now = new Date();
+            const diff = now - startTime;
+            
+            // Convert difference into readable format
+            const seconds = Math.floor(diff / 1000) % 60;
+            const minutes = Math.floor(diff / (1000 * 60)) % 60;
+            const hours = Math.floor(diff / (1000 * 60 * 60)) % 24;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-# Copy workflow values
-cp /app/workflow-values.yaml /tmp/workflow-values.yaml
+            document.getElementById("uptime").textContent = 
+                \`\${days}d \${hours}h \${minutes}m \${seconds}s\`;
+        }
 
-# Download & Extract Helm Package
-cd /tmp
-curl -O "https://artifactory.cloud.capitalone.com/artifactory/helm-shared/genai-kubernetes-platform/${WORKFLOWS_HUB}"
-tar -xvf genai-workflows-application.tgz --no-same-owner
+        // Update uptime every second
+        setInterval(updateUptime, 1000);
+        updateUptime(); // Initial call
+    </script>
+</body>
+</html>
+EOF
 
-# Apply Patches
-python3 /app/scripts/patches/patch_values.py workflow-values.yaml
-python3 /app/scripts/patches/patch_cron.py genai-workflows-application/templates/dev-env-cron.yaml
-
-# Determine which Kustomization overlay to apply
-if [ "$ENABLE_PHOENIX" = "true" ]; then
-    echo "Applying Phoenix overlay..."
-    kubectl kustomize /app/patches/overlays/phoenix --enable-helm > /tmp/genai-workflows-application.yaml
+# Open the temporary HTML file in the default browser
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    xdg-open "$TMP_HTML"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    open "$TMP_HTML"
 else
-    echo "Applying base overlay..."
-    kubectl kustomize /app/patches/base --enable-helm > /tmp/genai-workflows-application.yaml
+    echo "Unsupported OS"
 fi
-
-# Deploy
-kubectl apply -n "$NAMESPACE" -f /tmp/genai-workflows-application.yaml
-```
-
----
-
-## **Final Behavior**
-| `ENABLE_PHOENIX` | Applied Kustomization Overlay | Phoenix Container |
-|------------------|-----------------------------|-------------------|
-| `false` (default) | `patches/base/` | ❌ Not included |
-| `true` | `patches/overlays
