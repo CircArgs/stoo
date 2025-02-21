@@ -8,9 +8,37 @@ mv "$TMP_FILE" "$TMP_HTML"
 # Define the UTC start time (modify as needed)
 START_TIME="2025-02-19T12:00:00Z"
 
-# Define fake versions (replace with actual logic if needed)
-CLIENT_VERSION="1.2.3"
-WORKFLOW_CHART_VERSION="4.5.6"
+# Define Links (Format: "Display Name|URL")
+LINKS=(
+    "Example|https://example.com"
+    "Google|https://google.com"
+    "GitHub|https://github.com"
+)
+
+# Define Information (Format: "Parameter Name|Value")
+INFO=(
+    "Client Version|1.2.3"
+    "Workflow Chart Version|4.5.6"
+    "Server Status|Running"
+    "Last Deployment|2025-02-19 14:00 UTC"
+)
+
+# Generate JavaScript arrays from Bash arrays
+LINKS_JS="const links = ["
+for link in "${LINKS[@]}"; do
+    NAME="${link%%|*}"
+    URL="${link##*|}"
+    LINKS_JS+="{ name: \"$NAME\", url: \"$URL\" },"
+done
+LINKS_JS+="];"
+
+INFO_JS="const infoData = ["
+for info in "${INFO[@]}"; do
+    KEY="${info%%|*}"
+    VALUE="${info##*|}"
+    INFO_JS+="{ key: \"$KEY\", value: \"$VALUE\" },"
+done
+INFO_JS+="];"
 
 # Write HTML content with JavaScript
 cat > "$TMP_HTML" <<EOF
@@ -23,137 +51,122 @@ cat > "$TMP_HTML" <<EOF
     <style>
         body {
             font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            text-align: center;
             margin: 0;
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-        }
-        .sidebar {
-            width: 250px;
-            background: #007bff;
-            color: white;
-            display: flex;
-            flex-direction: column;
             padding: 20px;
-            box-shadow: 2px 0px 5px rgba(0, 0, 0, 0.2);
         }
-        .sidebar h2 {
-            margin-top: 0;
-            font-size: 20px;
+        .container {
+            background: white;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
         }
-        .tab-button {
-            background: none;
-            border: none;
+        h1 {
+            color: #333;
+            font-size: 24px;
+        }
+        .button-container {
+            margin: 20px 0;
+        }
+        .link-button {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #007bff;
             color: white;
-            padding: 12px;
-            text-align: left;
-            width: 100%;
-            cursor: pointer;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 10px auto;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 300px;
             font-size: 16px;
+            font-weight: bold;
             transition: background 0.3s;
         }
-        .tab-button:hover, .tab-button.active {
-            background: rgba(255, 255, 255, 0.2);
+        .link-button:hover {
+            background-color: #0056b3;
         }
         .status {
             font-size: 14px;
             margin-left: 10px;
         }
-        .status.up { color: lightgreen; }
+        .status.up { color: green; }
         .status.down { color: red; }
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        .header {
-            background: #f4f4f4;
-            padding: 10px;
-            text-align: center;
-            font-size: 20px;
-            font-weight: bold;
-        }
-        .iframe-container {
-            flex: 1;
-            overflow: hidden;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        .info-box {
-            padding: 10px;
+        .info {
             font-size: 14px;
-            text-align: center;
-            background: #f4f4f4;
+            color: #666;
+            margin-top: 20px;
         }
-        .info-table {
+        .uptime {
+            font-weight: bold;
+            color: #333;
+        }
+        table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            margin-top: 20px;
         }
-        .info-table th, .info-table td {
+        th, td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 10px;
             text-align: left;
         }
-        .info-table th {
-            background: #007bff;
+        th {
+            background-color: #007bff;
             color: white;
+        }
+        td {
+            background-color: #f9f9f9;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>Workflow Development Environment</h1>
+        
+        <div class="button-container" id="links-container"></div>
 
-    <div class="sidebar">
-        <h2>Workflow Dev Env</h2>
-        <button class="tab-button" onclick="loadTab('https://example.com', this)">Example 
-            <span id="status-example" class="status">Checking...</span>
-        </button>
-        <button class="tab-button" onclick="loadTab('https://google.com', this)">Google 
-            <span id="status-google" class="status">Checking...</span>
-        </button>
-
-        <div class="info-box">
-            <p>Uptime: <span id="uptime">Calculating...</span></p>
-            <table class="info-table">
-                <tr>
-                    <th>Client Version</th>
-                    <td>$CLIENT_VERSION</td>
-                </tr>
-                <tr>
-                    <th>Workflow Chart Version</th>
-                    <td>$WORKFLOW_CHART_VERSION</td>
-                </tr>
+        <div class="info">
+            <p>Environment has been up for: <span id="uptime" class="uptime">Calculating...</span></p>
+            <table>
+                <thead>
+                    <tr><th>Parameter</th><th>Value</th></tr>
+                </thead>
+                <tbody id="info-table"></tbody>
             </table>
         </div>
     </div>
 
-    <div class="main-content">
-        <div class="header">Select an option from the sidebar</div>
-        <div class="iframe-container">
-            <iframe id="content-frame" src=""></iframe>
-        </div>
-    </div>
-
     <script>
-        function loadTab(url, button) {
-            document.getElementById("content-frame").src = url;
-            document.querySelectorAll(".tab-button").forEach(btn => btn.classList.remove("active"));
-            button.classList.add("active");
-        }
+        ${LINKS_JS}
+        ${INFO_JS}
 
-        // List of sites to check
-        const sites = [
-            { url: "https://example.com", id: "status-example" },
-            { url: "https://google.com", id: "status-google" }
-        ];
+        // Generate links dynamically
+        const linksContainer = document.getElementById("links-container");
+        links.forEach(link => {
+            const button = document.createElement("a");
+            button.className = "link-button";
+            button.href = link.url;
+            button.target = "_blank"; // Open in a new tab
+            button.innerHTML = \`\${link.name} <span id="status-\${link.name}" class="status">Checking...</span>\`;
+            linksContainer.appendChild(button);
+        });
+
+        // Generate info table dynamically
+        const infoTable = document.getElementById("info-table");
+        infoData.forEach(info => {
+            const row = document.createElement("tr");
+            row.innerHTML = \`<td>\${info.key}</td><td>\${info.value}</td>\`;
+            infoTable.appendChild(row);
+        });
 
         // Function to check if a site is reachable
         function checkStatus(url, elementId) {
-            fetch(url, { mode: 'no-cors' }) // no-cors to avoid blocking issues
+            fetch(url, { mode: 'no-cors' })
                 .then(() => {
                     document.getElementById(elementId).textContent = "✅ Up";
                     document.getElementById(elementId).classList.add("up");
@@ -165,7 +178,7 @@ cat > "$TMP_HTML" <<EOF
         }
 
         // Run status checks
-        sites.forEach(site => checkStatus(site.url, site.id));
+        links.forEach(link => checkStatus(link.url, \`status-\${link.name}\`));
 
         // Uptime Counter
         const startTime = new Date("$START_TIME");
@@ -173,20 +186,16 @@ cat > "$TMP_HTML" <<EOF
         function updateUptime() {
             const now = new Date();
             const diff = now - startTime;
-            
-            // Convert difference into readable format
             const seconds = Math.floor(diff / 1000) % 60;
             const minutes = Math.floor(diff / (1000 * 60)) % 60;
             const hours = Math.floor(diff / (1000 * 60 * 60)) % 24;
             const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-            document.getElementById("uptime").textContent = 
-                \`\${days}d \${hours}h \${minutes}m \${seconds}s\`;
+            document.getElementById("uptime").textContent = \`\${days}d \${hours}h \${minutes}m \${seconds}s\`;
         }
 
-        // Update uptime every second
         setInterval(updateUptime, 1000);
-        updateUptime(); // Initial call
+        updateUptime();
     </script>
 
 </body>
