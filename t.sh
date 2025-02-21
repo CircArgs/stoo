@@ -7,12 +7,13 @@ mv "$TMP_FILE" "$TMP_HTML"
 
 # Define the UTC start time (modify as needed)
 START_TIME="2025-02-19T12:00:00Z"
+EXPIRATION_HOURS=36  # Environment expiration time in hours
 
 # Define Links (Format: "Display Name|URL")
 LINKS=(
-    "Example|https://example.com"
-    "Google|https://google.com"
-    "GitHub|https://github.com"
+    "Example|https://hugiugig.com"
+    "Google|https://fghgfhgf.com"
+    "GitHub|https://gitviuygiuygihub.com"
 )
 
 # Define Information (Format: "Parameter Name|Value")
@@ -22,6 +23,10 @@ INFO=(
     "Server Status|Running"
     "Last Deployment|2025-02-19 14:00 UTC"
 )
+
+# Define Code Block Content
+CODE_BLOCK="export ENV_VAR=production
+./run-workflow.sh --start"
 
 # Generate JavaScript arrays from Bash arrays
 LINKS_JS="const links = ["
@@ -96,6 +101,13 @@ cat > "$TMP_HTML" <<EOF
         }
         .status.up { color: green; }
         .status.down { color: red; }
+        .offline-warning {
+            display: none;
+            color: red;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
         .info {
             font-size: 14px;
             color: #666;
@@ -122,6 +134,31 @@ cat > "$TMP_HTML" <<EOF
         td {
             background-color: #f9f9f9;
         }
+        .code-block {
+            background: #222;
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: left;
+            font-family: monospace;
+            white-space: pre-wrap;
+            position: relative;
+        }
+        .copy-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 12px;
+        }
+        .copy-button:hover {
+            background: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -130,8 +167,12 @@ cat > "$TMP_HTML" <<EOF
         
         <div class="button-container" id="links-container"></div>
 
+        <p id="offline-warning" class="offline-warning">
+            ⚠ No connections available. Please restart the client.
+        </p>
+
         <div class="info">
-            <p>Environment has been up for: <span id="uptime" class="uptime">Calculating...</span></p>
+            <p>Time Remaining: <span id="uptime" class="uptime">Calculating...</span></p>
             <table>
                 <thead>
                     <tr><th>Parameter</th><th>Value</th></tr>
@@ -139,11 +180,19 @@ cat > "$TMP_HTML" <<EOF
                 <tbody id="info-table"></tbody>
             </table>
         </div>
+
+        <h2>Run This Command:</h2>
+        <div class="code-block">
+            <button class="copy-button" onclick="copyCode()">Copy</button>
+            <code id="command-code">$CODE_BLOCK</code>
+        </div>
     </div>
 
     <script>
         ${LINKS_JS}
         ${INFO_JS}
+
+        let activeLinks = 0;
 
         // Generate links dynamically
         const linksContainer = document.getElementById("links-container");
@@ -170,43 +219,47 @@ cat > "$TMP_HTML" <<EOF
                 .then(() => {
                     document.getElementById(elementId).textContent = "✅ Up";
                     document.getElementById(elementId).classList.add("up");
+                    activeLinks++;
                 })
                 .catch(() => {
                     document.getElementById(elementId).textContent = "❌ Down";
                     document.getElementById(elementId).classList.add("down");
+                })
+                .finally(() => {
+                    setTimeout(() => {
+                        if (activeLinks === 0) {
+                            document.getElementById("offline-warning").style.display = "block";
+                        }
+                    }, 3000);
                 });
         }
 
         // Run status checks
         links.forEach(link => checkStatus(link.url, \`status-\${link.name}\`));
 
-        // Uptime Counter
-        const startTime = new Date("$START_TIME");
-        
-        function updateUptime() {
-            const now = new Date();
-            const diff = now - startTime;
-            const seconds = Math.floor(diff / 1000) % 60;
-            const minutes = Math.floor(diff / (1000 * 60)) % 60;
-            const hours = Math.floor(diff / (1000 * 60 * 60)) % 24;
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        // Countdown Timer
+        const expirationTime = new Date(new Date("$START_TIME").getTime() + ($EXPIRATION_HOURS * 60 * 60 * 1000));
 
-            document.getElementById("uptime").textContent = \`\${days}d \${hours}h \${minutes}m \${seconds}s\`;
+        function updateCountdown() {
+            const now = new Date();
+            const diff = expirationTime - now;
+            document.getElementById("uptime").textContent = diff > 0 ? 
+                new Date(diff).toISOString().substr(11, 8) + " remaining" : 
+                "⚠ Environment has expired!";
         }
 
-        setInterval(updateUptime, 1000);
-        updateUptime();
+        setInterval(updateCountdown, 1000);
+        updateCountdown();
+
+        function copyCode() {
+            navigator.clipboard.writeText(document.getElementById("command-code").innerText);
+            alert("Command copied to clipboard!");
+        }
     </script>
 
 </body>
 </html>
 EOF
 
-# Open the temporary HTML file in the default browser
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    xdg-open "$TMP_HTML"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    open "$TMP_HTML"
-else
-    echo "Unsupported OS"
-fi
+# Open the HTML file
+xdg-open "$TMP_HTML" 2>/dev/null || open "$TMP_HTML"
